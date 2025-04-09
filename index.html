@@ -17,14 +17,15 @@
         // --- Constants ---
         let SCREEN_WIDTH = window.innerWidth; // Use full window size
         let SCREEN_HEIGHT = window.innerHeight;
-        const MAX_ACCRETION_PARTICLES = 5000;
-        const MAX_FALLING_STARS = 120;
+        const MAX_ACCRETION_PARTICLES = 3000;
+        const MAX_FALLING_STARS = 240;
+        const MAX_BACKGROUND_STARS = 1000; // New constant for background stars
         const BG_COLOR_CSS = '#000000'; // CSS background color
 
         // --- Global Variables ---
         let objectX = SCREEN_WIDTH / 2; // Centered X
         let objectY = SCREEN_HEIGHT / 2; // Centered Y
-        let objectScale = 10.0; // Initial scale
+        let objectScale = 10.0; // Initial scale back to 10.0 for larger default size
 
         // Black hole parameters
         let blackHoleRadius = 0;
@@ -36,6 +37,7 @@
         // Global arrays for simulation objects
         let accretionDisk = [];
         let fallingStars = [];
+        let backgroundStars = []; // New array for background stars
 
         // --- Helper Functions ---
 
@@ -81,8 +83,9 @@
                 this.relativistic_factor = 0;
                 this.doppler_shift = 0;
                 this.trail = []; // Array of {x, y, colorCSS} objects
-                this.trailLength = random(1, 4); // Variable trail length for more realism
+                this.trailLength = random(100, 800); // More pronounced trails for better visibility
                 this.size = random(1.2, 2.5); // Variable particle size
+                this.baseSize = random(0.8, 1.8); // Base size before scaling
                 this.flickerRate = random(0.01, 0.05); // How much brightness varies
                 this.flickerPhase = random(0, 2 * Math.PI); // Starting phase for flicker
                 this.eccentricity = random(0, 0.2); // Orbital eccentricity for more realistic orbits
@@ -91,26 +94,42 @@
 
         class FallingStar {
             constructor() {
-                this.x = 0; // Simulation position X
-                this.y = 0; // Simulation position Y
+                this.x = 0;
+                this.y = 0;
                 this.vx = 0;
                 this.vy = 0;
-                this.distance = 0; // Distance from center
+                this.distance = 0;
                 this.brightness = 0;
-                this.size = random(3.0, 8.0); // Random size for visual variety
-                this.screenX = -1; // Current screen X
-                this.screenY = -1; // Current screen Y
+                this.size = random(3.0, 8.0);
+                this.screenX = -1;
+                this.screenY = -1;
                 this.active = false;
-                this.spinFactor = 0;
-                this.startTime = 0; // For trail fading
-                this.hasTrail = true; // Ensure all stars have trails
-                this.canHaveTrail = true; // Ensure all stars can have trails
-                this.trailLifetime = 1000; // Increased lifetime for spaghettification
-                this.trail = []; // Array of {x, y, colorCSS, size} points
-                this.maxTrailLength = 30; // Longer trail for spaghettification
-                this.spinFactor = random(-1.0, 1.0); // Random spin for spaghettification
-                this.trailStretchFactor = 3.0; // Controls spaghettification effect
-                this.trailIntensity = random(0.7, 1.0); // Variation in trail brightness
+                this.spinFactor = random(-1.0, 1.0);
+                this.startTime = 0;
+                this.hasTrail = true; // Always enable trails
+                this.canHaveTrail = true;
+                this.trailLifetime = 2000; // Increased lifetime
+                this.trail = [];
+                this.maxTrailLength = 50; // Increased trail length
+                this.trailStretchFactor = 8.0;
+                this.maxTrailStretch = 12.0; // Add this property
+                this.trailIntensity = random(0.8, 1.0);
+                // Store as a factor of black hole radius for correct scaling
+                this.spaghettificationFactor = random(2.0, 4.0);
+                this.spaghettificationDistance = 0; // Will be calculated in updateSimulation
+            }
+        }
+
+        // New structure for background stars
+        class BackgroundStar {
+            constructor(width, height) {
+                this.baseX = random(0, width);  // Position when scale = 1
+                this.baseY = random(0, height); // Position when scale = 1
+                this.brightness = random(150, 255); // Increased brightness range
+                this.size = random(2.0, 5.0); // Added size variation similar to falling stars
+                // Parallax multiplier: smaller value means farther away (less movement)
+                this.parallaxMultiplier = random(0.05, 0.4); 
+                this.colorCSS = `rgb(${this.brightness},${this.brightness},${this.brightness})`;
             }
         }
 
@@ -119,8 +138,13 @@
             if (!accretionDisk[index]) accretionDisk[index] = new AccretionParticle();
             const particle = accretionDisk[index];
 
-            let currentDiskInnerRadius = Math.max(1.0, blackHoleRadius * 1.2);
-            let currentDiskOuterRadius = Math.max(currentDiskInnerRadius + 1.0, blackHoleRadius * 2.5);
+            let currentDiskInnerRadius = blackHoleRadius * 1.2;
+            let currentDiskOuterRadius = blackHoleRadius * 2.5;
+            
+            // Scale down the initialization distances to account for removal of division by 10
+            currentDiskInnerRadius = currentDiskInnerRadius / objectScale;
+            currentDiskOuterRadius = currentDiskOuterRadius / objectScale;
+            
             let diskWidth = currentDiskOuterRadius - currentDiskInnerRadius;
             if (diskWidth <= 0) diskWidth = 1; // Avoid division by zero
 
@@ -161,45 +185,50 @@
             let sin_angle = Math.sin(particle.angle);
             particle.doppler_shift = 1.0 / (1.0 - particle.relativistic_factor * sin_angle); // Simplified doppler
 
-            // More realistic temperature distribution with random variations
+            // More accurate blackbody temperature distribution
             let temp_factor = (currentDiskInnerRadius > 0 && particle.distance > 0) ? 
-                Math.pow(currentDiskInnerRadius / particle.distance, 0.75) * (1 + random(-0.1, 0.1)) : 0;
+                Math.pow(currentDiskInnerRadius / particle.distance, 0.75) * (1 + random(-0.05, 0.05)) : 0;
             let temp_ratio = temp_factor * particle.doppler_shift;
 
-            // Calculate RGB based on temperature (improved blackbody with more color variation)
+            // Calculate RGB based on blackbody radiation with relativistic effects
             let r, g, b;
-            let colorVariation = random(-15, 15); // Add slight color variations
+            let colorVariation = random(-15, 15); // Increased variation for more diversity
             
             if (temp_ratio > 1.5) { 
-                // Very hot - blue/white with variations
-                r = 220 + colorVariation; 
-                g = 235 + colorVariation/2; 
+                // Very hot (10,000-30,000K) - blue/white with relativistic beaming
+                r = 200 + colorVariation; 
+                g = 220 + colorVariation; 
                 b = 255; 
             } else if (temp_ratio > 1.2) { 
-                // Hot - white/blue tint
-                r = 235 + colorVariation; 
-                g = 235 + colorVariation/2; 
+                // Hot (7,000-10,000K) - white with blue tint
+                r = 240 + colorVariation; 
+                g = 245 + colorVariation; 
                 b = 255; 
-            } else if (temp_ratio > 0.8) { 
-                // Medium - white with slight variations
+            } else if (temp_ratio > 0.9) { 
+                // Warm (5,000-7,000K) - white with slight yellow tint
                 r = 255; 
-                g = 255 + colorVariation/3; 
-                b = 255 + colorVariation; 
-            } else if (temp_ratio > 0.6) { 
-                // Cool - yellow/white
+                g = 250 + colorVariation; 
+                b = 240 + colorVariation; 
+            } else if (temp_ratio > 0.7) { 
+                // Medium (4,000-5,000K) - yellow/white
                 r = 255; 
-                g = 255 + colorVariation/2; 
-                b = 200 + colorVariation; 
+                g = 245 + colorVariation; 
+                b = 210 + colorVariation; 
+            } else if (temp_ratio > 0.5) { 
+                // Cool (3,000-4,000K) - orange/yellow
+                r = 255; 
+                g = 230 + colorVariation; 
+                b = 190 + colorVariation; 
             } else { 
-                // Coolest - yellow/orange/red with variations
+                // Coolest (<3,000K) - deep red/orange (minimum brightness increased)
                 r = 255; 
                 g = 200 + colorVariation; 
                 b = 150 + colorVariation/2; 
             }
 
             // Relativistic beaming with improved intensity calculation
-            let intensity = Math.pow(particle.doppler_shift, 4.0) * (1 + random(-0.1, 0.1)); 
-            intensity = constrain(intensity, 0.1, 3.0);
+            let intensity = Math.pow(particle.doppler_shift, 4.0) * (1 + random(-0.05, 0.15)); 
+            intensity = constrain(intensity, 0.5, 4.0); // Increased minimum intensity
 
             r = constrain(r * intensity, 0, 255);
             g = constrain(g * intensity, 0, 255);
@@ -216,8 +245,8 @@
             particle.speed = 0.04 * orbitRatio * (1 + random(-0.05, 0.05)); 
             
             // Randomize trail properties for more varied appearance
-            particle.trailLength = Math.floor(random(1, 5)); // Variable trail length
-            particle.hasTrail = random(0, 1) < 0.8; // 80% of particles have trails
+            particle.trailLength = Math.floor(random(3, 8)); // Variable trail length
+            particle.hasTrail = true; // All particles have trails for consistent appearance
             
             particle.x = -1; // Reset calculated position
             particle.y = -1;
@@ -231,10 +260,10 @@
             let centerY = objectY;
             let scale = objectScale;
 
-             // Recalculate radii based on scale
+             // Recalculate radii based on scale with fixed proportions
             blackHoleRadius = 14 * scale;
-            diskInnerRadius = blackHoleRadius * 1.2;
-            diskOuterRadius = blackHoleRadius * 2.0;
+            diskInnerRadius = blackHoleRadius * 1.2; // Fixed ratio to black hole
+            diskOuterRadius = blackHoleRadius * 2.5; // Fixed ratio to black hole
 
             // --- Update Accretion Disk ---
             accretionDisk.forEach((particle, i) => {
@@ -263,17 +292,17 @@
                  // Maintain stable orbit distance
                  // Remove inward spiraling behavior to keep particles in place
                  
-                 // Enforce bounds
-                 particle.distance = Math.max(particle.distance, currentDiskInnerRadius * 0.1);
-                 particle.distance = Math.min(particle.distance, diskOuterRadius * 1.1);
+                 // Enforce bounds with consistent proportions during zoom
+              
 
                  // Calculate new screen position with eccentricity
                  let angle = particle.angle;
                  // Apply eccentricity to distance - creates elliptical orbits
                  let orbitDistance = particle.distance * (1 - particle.eccentricity * Math.cos(angle));
                  let verticalCompression = 0.5 - 0.3 * Math.cos(angle); // Perspective
-                 let floatX = centerX + Math.cos(angle) * orbitDistance;
-                 let floatY = centerY + Math.sin(angle) * orbitDistance * verticalCompression;
+                 let displayDistance = orbitDistance * scale; // Remove division by 10.0 to match black hole scaling
+                 let floatX = centerX + Math.cos(angle) * displayDistance;
+                 let floatY = centerY + Math.sin(angle) * displayDistance * verticalCompression;
                  particle.x = round(floatX);
                  particle.y = round(floatY);
                  
@@ -309,22 +338,22 @@
                          }
 
                          // Add previous point to start of trail with size information
-                         particle.trail.unshift({ 
-                             x: prevScreenX, 
-                             y: prevScreenY, 
+                         particle.trail.unshift({
+                             x: prevScreenX,
+                             y: prevScreenY,
                              colorCSS: trailColors[0] || particle.colorCSS,
-                             size: Math.max(1, particle.size * 0.8) // Slightly smaller than particle
-                         }); 
-                         
+                             baseSize: Math.max(0.5, particle.baseSize * 0.8)
+                         });
+
                          if (particle.trail.length > particle.trailLength) {
                              particle.trail.pop(); // Remove oldest point
                          }
-                         
+
                          // Assign faded colors to existing points
                          particle.trail.forEach((point, t) => {
                              point.colorCSS = trailColors[t] || '#111'; // Assign faded color or dark fallback
                              // Gradually reduce size along trail
-                             point.size = Math.max(1, particle.size * (1.0 - (t * 0.15)));
+                             point.baseSize = Math.max(0.5, particle.baseSize * (1.0 - (t * 0.15)));
                          });
                      }
                  }
@@ -352,6 +381,9 @@
                  let distSq = dx*dx + dy*dy;
                  let dist = Math.sqrt(distSq);
                  star.distance = dist;
+
+                 // Update spaghettification distance based on current black hole radius
+                 star.spaghettificationDistance = blackHoleRadius * star.spaghettificationFactor;
 
                  if (dist > 0.1) {
                      // Gravity
@@ -392,9 +424,23 @@
 
                  // Apply spaghettification effect to trail
                  if (star.distance < blackHoleRadius * 5.0) {
-                     this.trailStretchFactor = 1.0 + (blackHoleRadius * 5.0 - star.distance) / (blackHoleRadius * 5.0) * 4.0;
-                     this.hasTrail = true; // Ensure all stars have trails
-                     this.canHaveTrail = true; // Ensure all stars can have trails
+                     // Scale stretch factor based on both distance and star size
+                     let distanceRatio = (blackHoleRadius * 5.0 - star.distance) / (blackHoleRadius * 5.0);
+                     star.trailStretchFactor = 1.0 + distanceRatio * 4.0 * (star.size / 5.0);
+                 }
+                 
+                 // Ensure trail is always active and update trail points
+                 if (star.active && star.hasTrail) {
+                     const trailPoint = {
+                         x: star.screenX,
+                         y: star.screenY,
+                         colorCSS: '#ffffff',
+                         size: star.size * (1.0 - star.distance / (blackHoleRadius * 5.0))
+                     };
+                     star.trail.unshift(trailPoint);
+                     if (star.trail.length > star.maxTrailLength) {
+                         star.trail.pop();
+                     }
                  }
 
                  star.screenX = round(star.x);
@@ -405,7 +451,7 @@
                      star.active = false;
                      if (dist <= blackHoleRadius * 1.5) { // Consumed near BH
                          // Only keep trail visible if this star can have trails
-                         star.hasTrail = star.canHaveTrail;
+                         star.hasTrail = true;
                          star.startTime = currentTime;
                          // Quick flash effect - draw directly here (or flag for draw phase)
                          ctx.fillStyle = '#FFFFFF';
@@ -434,60 +480,58 @@
                  let baseColor = colorToCSS(starBrightness, starBrightness, starBrightness);
 
                  // Always add star head to trail (with its size)
-                 star.trail.push({ x: star.screenX, y: star.screenY, colorCSS: baseColor, size: star.size });
+                 star.trail.push({ x: star.screenX, y: star.screenY, colorCSS: baseColor, size: star.size }); // Falling star size doesn't scale with zoom
 
-                 // Only apply spaghettification to stars that can have trails
-                 if (star.canHaveTrail && current_dist < blackHoleRadius * 3.0 && current_dist > 0.1) {
-                    // Set hasTrail to true when star gets close enough to black hole
-                    star.hasTrail = true;
-                    
-                    // Enhanced spaghettification with randomized stretch factors
-                    let stretchAngle = Math.atan2(dy, dx); // Angle from star TO center
-                    star.trailStretchFactor = 1.0 + (blackHoleRadius * 3.0 - current_dist) / (blackHoleRadius * 3.0) * star.maxTrailStretch;
+                 // Apply spaghettification to all stars that get close enough
+                 if (current_dist < star.spaghettificationDistance && current_dist > 0.1) {
+                     star.hasTrail = true;
+                     
+                     // Enhanced spaghettification with randomized stretch factors
+                     let stretchAngle = Math.atan2(dy, dx); // Angle from star TO center
+                     star.trailStretchFactor = 1.0 + (star.spaghettificationDistance - current_dist) / star.spaghettificationDistance * star.maxTrailStretch;
 
-                    // Calculate tidal forces with some randomization for variety
-                    let tidalForce = (blackHoleRadius * blackHoleRadius * blackHoleRadius * 50.0) / 
-                                     Math.max(distSq * current_dist, 1.0);
-                    
-                    // Add some randomization to the stretch factor for more varied appearances
-                    let randomFactor = 0.7 + random(0, 0.6); // 0.7-1.3 multiplier
-                    let stretchFactor = Math.min(6.0, tidalForce * randomFactor);
-                    let numStretchPoints = Math.max(1, Math.floor(stretchFactor));
+                     // Calculate tidal forces with some randomization for variety
+                     let tidalForce = (blackHoleRadius * blackHoleRadius * blackHoleRadius * 80.0) / // Increased from 50.0 to 80.0
+                                      Math.max(distSq * current_dist, 1.0);
+                     
+                     // Add some randomization to the stretch factor for more varied appearances
+                     let randomFactor = 0.7 + random(0.3, 1.5); // Increased max from 1.2 to 1.5
+                     let stretchFactor = Math.min(18.0, tidalForce * randomFactor); // Increased from 6.0 to 18.0
+                     let numStretchPoints = Math.max(1, Math.floor(stretchFactor));
 
-                    for (let j = 1; j <= numStretchPoints && star.trail.length < star.maxTrailLength; j++) {
-                        let spacing = j * (0.4 + j * 0.05);
-                        let aheadX = round(star.screenX + Math.cos(stretchAngle) * spacing);
-                        let aheadY = round(star.screenY + Math.sin(stretchAngle) * spacing);
-                        let behindX = round(star.screenX - Math.cos(stretchAngle) * spacing * 1.1);
-                        let behindY = round(star.screenY - Math.sin(stretchAngle) * spacing * 1.1);
-                        let pointSize = Math.max(1.0, star.size * (1.0 / (1 + j * 0.2))); // Trail points get smaller
+                     for (let j = 1; j <= numStretchPoints && star.trail.length < star.maxTrailLength; j++) {
+                         let spacing = j * (0.6 + j * 0.08); // Increased base spacing from 0.4 to 0.6
+                         let aheadX = round(star.screenX + Math.cos(stretchAngle) * spacing);
+                         let aheadY = round(star.screenY + Math.sin(stretchAngle) * spacing);
+                         let behindX = round(star.screenX - Math.cos(stretchAngle) * spacing * 1.2); // Increased from 1.1 to 1.2
+                         let behindY = round(star.screenY - Math.sin(stretchAngle) * spacing * 1.2); // Increased from 1.1 to 1.2
+                         let pointSize = Math.max(1.0, star.size * (1.0 / (1 + j * 0.15))); // Reduced size decay from 0.2 to 0.15
 
-                        // Point towards BH
-                        if (aheadX >= 0 && aheadX < SCREEN_WIDTH && aheadY >= 0 && aheadY < SCREEN_HEIGHT &&
-                            Math.sqrt(Math.pow(aheadX - centerX, 2) + Math.pow(aheadY - centerY, 2)) > blackHoleRadius) {
-                            let intensityFactor = 1.0 / (j * 0.7 + 1.0);
-                            let aheadColor = colorToCSS(
-                                starBrightness * 1.2 * intensityFactor,
-                                starBrightness * 1.1 * intensityFactor,
-                                starBrightness * 1.0 * intensityFactor
-                            );
-                            star.trail.push({ x: aheadX, y: aheadY, colorCSS: aheadColor, size: pointSize });
-                        }
-
-                        // Point away from BH
-                        if (behindX >= 0 && behindX < SCREEN_WIDTH && behindY >= 0 && behindY < SCREEN_HEIGHT &&
-                            star.trail.length < star.maxTrailLength) {
-                             let tailFactor = 1.0 / (j * 1.0 + 1.0);
-                             let behindColor = colorToCSS(
-                                starBrightness * 1.1 * tailFactor,
-                                starBrightness * 0.8 * tailFactor, // Redder tint
-                                starBrightness * 0.6 * tailFactor
+                         // Point towards BH
+                         if (aheadX >= 0 && aheadX < SCREEN_WIDTH && aheadY >= 0 && aheadY < SCREEN_HEIGHT &&
+                             Math.sqrt(Math.pow(aheadX - centerX, 2) + Math.pow(aheadY - centerY, 2)) > blackHoleRadius) {
+                             let intensityFactor = 1.0 / (j * 0.6 + 1.0); // Reduced decay from 0.7 to 0.6
+                             let aheadColor = colorToCSS(
+                                 starBrightness * 1.3 * intensityFactor, // Increased from 1.2 to 1.3
+                                 starBrightness * 1.2 * intensityFactor, // Increased from 1.1 to 1.2
+                                 starBrightness * 1.0 * intensityFactor
                              );
-                             star.trail.push({ x: behindX, y: behindY, colorCSS: behindColor, size: pointSize });
-                        }
-                    }
-                }
+                             star.trail.push({ x: aheadX, y: aheadY, colorCSS: aheadColor, size: pointSize });
+                         }
 
+                         // Point away from BH (ensure size is defined)
+                         if (behindX >= 0 && behindX < SCREEN_WIDTH && behindY >= 0 && behindY < SCREEN_HEIGHT &&
+                             star.trail.length < star.maxTrailLength) {
+                              let tailFactor = 1.0 / (j * 0.9 + 1.0); // Reduced decay from 1.0 to 0.9
+                              let behindColor = colorToCSS(
+                                 starBrightness * 1.2 * tailFactor, // Increased from 1.1 to 1.2
+                                 starBrightness * 0.7 * tailFactor, // Reduced from 0.8 to 0.7
+                                 starBrightness * 0.5 * tailFactor  // Reduced from 0.6 to 0.5
+                              );
+                              star.trail.push({ x: behindX, y: behindY, colorCSS: behindColor, size: pointSize });
+                         }
+                     }
+                 }
             });
 
             // --- Randomly Create New Falling Stars ---
@@ -502,12 +546,12 @@
                          // Determine if this star will have spaghettification effects
                          // Only about 40% of stars will have trails/spaghettification
                          star.canHaveTrail = random(0, 1) < 0.6; // 40% chance to have trail
-                         star.hasTrail = false; // Start with no trail
+                         star.hasTrail = true; // Start with no trail
                          
                          star.startTime = currentTime;
                          star.brightness = random(180, 256);
                          star.spinFactor = random(0.5, 2.0); // Adjusted range
-                         star.size = random(1.0, 2.5); // Wider range of sizes
+                         star.size = random(1.0, 3.5); // Wider range of sizes
                          star.trail = [];
                          
                          // Randomize trail properties for stars that can have trails
@@ -554,6 +598,22 @@
             ctx.fillStyle = BG_COLOR_CSS;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // 1.5 Draw Background Stars (with Parallax)
+            backgroundStars.forEach(star => {
+                // Calculate apparent position based on objectScale and parallaxMultiplier
+                // Stars move outwards from center when zooming in (objectScale > 1)
+                // Stars move inwards towards center when zooming out (objectScale < 1)
+                let effectiveScale = 1 + (objectScale - 1) * star.parallaxMultiplier;
+                let drawX = Math.round(centerX + (star.baseX - canvas.width / 2) * effectiveScale); // Use initial canvas center for base offset
+                let drawY = Math.round(centerY + (star.baseY - canvas.height / 2) * effectiveScale); // Use initial canvas center for base offset
+
+                // Draw only if on screen
+                if (drawX >= 0 && drawX < canvas.width && drawY >= 0 && drawY < canvas.height) {
+                    ctx.fillStyle = star.colorCSS;
+                    ctx.fillRect(drawX, drawY, 1, 1); // Draw simple 1x1 stars
+                }
+            });
+
             // 2. Draw Back Half of Accretion Disk (sin(angle) <= 0)
             accretionDisk.forEach(particle => {
                 if (!particle.active || particle.x < 0 || Math.sin(particle.angle) > 0) return;
@@ -564,13 +624,24 @@
                 // Apply flickering effect to particle brightness
                 let flickerAmount = Math.sin(currentTime * particle.flickerRate + particle.flickerPhase) * 0.2 + 0.8;
                 
-                // Draw trail first (behind particle)
+                // Draw trail first (behind particle), scaling size
                 if (particle.hasTrail) {
                     particle.trail.forEach(trailPoint => {
                         let trailDistSq = Math.pow(trailPoint.x - centerX, 2) + Math.pow(trailPoint.y - centerY, 2);
                         if (trailDistSq <= Math.pow(r_bh, 2)) return; // Skip trail inside horizon
                         ctx.fillStyle = trailPoint.colorCSS;
-                        ctx.fillRect(trailPoint.x, trailPoint.y, 1, 1);
+                        // Reintroduce sqrt scaling for trails
+                        let trailDrawSize = Math.max(1, Math.round(trailPoint.baseSize * Math.sqrt(objectScale))); // Use Math.sqrt again
+                        let trailOffset = Math.floor(trailDrawSize / 2);
+                        
+                        // Draw trail points as small circles for more natural appearance
+                        if (trailDrawSize > 2 && objectScale > 3.0) {
+                            ctx.beginPath();
+                            ctx.arc(trailPoint.x, trailPoint.y, trailOffset, 0, 2 * Math.PI);
+                            ctx.fill();
+                        } else {
+                            ctx.fillRect(trailPoint.x - trailOffset, trailPoint.y - trailOffset, trailDrawSize, trailDrawSize);
+                        }
                     });
                 }
 
@@ -583,15 +654,44 @@
                 );
                 ctx.fillStyle = adjustedColor;
                 
-                // Use variable size for particles
-                let particleSize = Math.max(1, Math.round(particle.size));
-                if (particleSize === 1) {
+                // Use variable baseSize and scale with objectScale
+                // Reintroduce sqrt scaling for particles
+                let particleDrawSize = Math.max(1, Math.round(particle.baseSize * Math.sqrt(objectScale) * 1.2)); // Use Math.sqrt again + factor
+                if (particleDrawSize === 1) {
                     ctx.fillRect(particle.x, particle.y, 1, 1);
                 } else {
                     // Center larger particles on their coordinates
-                    let offsetX = Math.floor(particleSize / 2);
-                    let offsetY = Math.floor(particleSize / 2);
-                    ctx.fillRect(particle.x - offsetX, particle.y - offsetY, particleSize, particleSize);
+                    let offsetX = Math.floor(particleDrawSize / 2);
+                    let offsetY = Math.floor(particleDrawSize / 2);
+                    
+                    // Draw larger particles as glowing circles when zoomed in for more realism
+                    if (particleDrawSize > 3 && objectScale > 3.0) {
+                        // Add subtle glow effect for more realistic appearance
+                        let glowSize = particleDrawSize * 1.5;
+                        let gradient = ctx.createRadialGradient(
+                            particle.x, particle.y, 0,
+                            particle.x, particle.y, glowSize
+                        );
+                        gradient.addColorStop(0, adjustedColor);
+                        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+                        
+                        ctx.save();
+                        ctx.globalAlpha = 0.7;
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(particle.x, particle.y, glowSize, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.restore();
+                        
+                        // Draw the main particle
+                        ctx.beginPath();
+                        ctx.arc(particle.x, particle.y, offsetX, 0, 2 * Math.PI);
+                        ctx.fillStyle = adjustedColor;
+                        ctx.fill();
+                    } else {
+                        // Use rectangles for smaller particles or zoomed out view
+                        ctx.fillRect(particle.x - offsetX, particle.y - offsetY, particleDrawSize, particleDrawSize);
+                    }
                 }
             });
 
@@ -662,10 +762,11 @@
                 star.trail.forEach(point => {
                      if (point.x >= 0 && point.x < SCREEN_WIDTH && point.y >= 0 && point.y < SCREEN_HEIGHT) {
                          ctx.fillStyle = point.colorCSS;
-                         // ** NEW: Use point size **
+                         // Draw as circle instead of rectangle
                          let drawSize = Math.max(1, Math.round(point.size)); // Ensure at least 1 pixel
-                         let drawOffset = Math.floor(drawSize / 2);
-                         ctx.fillRect(point.x - drawOffset, point.y - drawOffset, drawSize, drawSize);
+                         ctx.beginPath();
+                         ctx.arc(point.x, point.y, drawSize/2, 0, 2 * Math.PI);
+                         ctx.fill();
                      }
                 });
             });
@@ -677,13 +778,24 @@
                 // Apply flickering effect to particle brightness
                 let flickerAmount = Math.sin(currentTime * particle.flickerRate + particle.flickerPhase) * 0.2 + 0.8;
                 
-                // Draw trail first (behind particle)
+                // Draw trail first (behind particle), scaling size
                 if (particle.hasTrail) {
                     particle.trail.forEach(trailPoint => {
                         let trailDistSq = Math.pow(trailPoint.x - centerX, 2) + Math.pow(trailPoint.y - centerY, 2);
                         if (trailDistSq <= Math.pow(r_bh, 2)) return; // Skip trail inside horizon
                         ctx.fillStyle = trailPoint.colorCSS;
-                        ctx.fillRect(trailPoint.x, trailPoint.y, 1, 1);
+                        // Reintroduce sqrt scaling for trails
+                        let trailDrawSize = Math.max(1, Math.round(trailPoint.baseSize * Math.sqrt(objectScale))); // Use Math.sqrt again
+                        let trailOffset = Math.floor(trailDrawSize / 2);
+                        
+                        // Draw trail points as small circles for more natural appearance
+                        if (trailDrawSize > 2 && objectScale > 3.0) {
+                            ctx.beginPath();
+                            ctx.arc(trailPoint.x, trailPoint.y, trailOffset, 0, 2 * Math.PI);
+                            ctx.fill();
+                        } else {
+                            ctx.fillRect(trailPoint.x - trailOffset, trailPoint.y - trailOffset, trailDrawSize, trailDrawSize);
+                        }
                     });
                 }
 
@@ -696,15 +808,44 @@
                 );
                 ctx.fillStyle = adjustedColor;
                 
-                // Use variable size for particles
-                let particleSize = Math.max(1, Math.round(particle.size));
-                if (particleSize === 1) {
+                // Use variable baseSize and scale with objectScale
+                // Reintroduce sqrt scaling for particles
+                let particleDrawSize = Math.max(1, Math.round(particle.baseSize * Math.sqrt(objectScale) * 1.2)); // Use Math.sqrt again + factor
+                if (particleDrawSize === 1) {
                     ctx.fillRect(particle.x, particle.y, 1, 1);
                 } else {
                     // Center larger particles on their coordinates
-                    let offsetX = Math.floor(particleSize / 2);
-                    let offsetY = Math.floor(particleSize / 2);
-                    ctx.fillRect(particle.x - offsetX, particle.y - offsetY, particleSize, particleSize);
+                    let offsetX = Math.floor(particleDrawSize / 2);
+                    let offsetY = Math.floor(particleDrawSize / 2);
+                    
+                    // Draw larger particles as glowing circles when zoomed in for more realism
+                    if (particleDrawSize > 3 && objectScale > 3.0) {
+                        // Add subtle glow effect for more realistic appearance
+                        let glowSize = particleDrawSize * 1.5;
+                        let gradient = ctx.createRadialGradient(
+                            particle.x, particle.y, 0,
+                            particle.x, particle.y, glowSize
+                        );
+                        gradient.addColorStop(0, adjustedColor);
+                        gradient.addColorStop(1, 'rgba(0,0,0,0)');
+                        
+                        ctx.save();
+                        ctx.globalAlpha = 0.7;
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(particle.x, particle.y, glowSize, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.restore();
+                        
+                        // Draw the main particle
+                        ctx.beginPath();
+                        ctx.arc(particle.x, particle.y, offsetX, 0, 2 * Math.PI);
+                        ctx.fillStyle = adjustedColor;
+                        ctx.fill();
+                    } else {
+                        // Use rectangles for smaller particles or zoomed out view
+                        ctx.fillRect(particle.x - offsetX, particle.y - offsetY, particleDrawSize, particleDrawSize);
+                    }
                 }
             });
         }
@@ -727,6 +868,8 @@
             // Initialize if first time or after resize forced re-init
              if (!blackHoleInitialized) {
                  blackHoleRadius = 14 * objectScale; // Initial calculation
+                 diskInnerRadius = blackHoleRadius * 1.2;
+                 diskOuterRadius = blackHoleRadius * 2.0;
                  // Init particles
                  for (let i = 0; i < MAX_ACCRETION_PARTICLES; i++) {
                      initializeAccretionParticle(i, objectX, objectY);
@@ -735,7 +878,13 @@
                   for (let i = 0; i < MAX_FALLING_STARS; i++) {
                      fallingStars[i] = new FallingStar(); // This now includes random size
                      fallingStars[i].active = false;
+                     // Initialize spaghettification distance
+                     fallingStars[i].spaghettificationDistance = blackHoleRadius * fallingStars[i].spaghettificationFactor;
                      // Keep trails enabled by default
+                 }
+                 // Init background stars
+                 for (let i = 0; i < MAX_BACKGROUND_STARS; i++) {
+                     backgroundStars[i] = new BackgroundStar(canvas.width, canvas.height);
                  }
                  blackHoleInitialized = true;
              }
@@ -769,15 +918,20 @@
                 objectX = canvas.width / 2; // Recenter X
                 objectY = canvas.height / 2; // Recenter Y
                 // Force re-initialization on resize to redistribute particles nicely
-                 blackHoleInitialized = false;
+                // Also re-initialize background stars for the new size
+                backgroundStars = [];
+                for (let i = 0; i < MAX_BACKGROUND_STARS; i++) {
+                    backgroundStars[i] = new BackgroundStar(canvas.width, canvas.height);
+                }
+                blackHoleInitialized = false;
             });
 
             // Add mouse wheel interaction to change the black hole scale
              canvas.addEventListener('wheel', (event) => {
                  event.preventDefault(); // Prevent page scrolling
-                 const scaleAmount = -event.deltaY * 0.001;
-                 objectScale = Math.max(0.1, Math.min(objectScale + scaleAmount, 5.0)); // Limit scale
-                 // Radii are recalculated dynamically in update loop
+                 const scaleAmount = event.deltaY > 0 ? -0.01 : 0.01;
+                 objectScale = Math.max(0.2, Math.min(objectScale * (1 + scaleAmount), 50.0));
+                  // Radii are recalculated dynamically in update loop
              });
 
             // Start the animation
