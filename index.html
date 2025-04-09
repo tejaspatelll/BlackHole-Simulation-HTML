@@ -1,6 +1,6 @@
 <html lang="en"><head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>HTML Black Hole Simulation (Improved)</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -8,15 +8,26 @@
     </style>
 </head>
 <body>
-    <canvas id="blackHoleCanvas" width="1284" height="908"></canvas>
+    <canvas id="blackHoleCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('blackHoleCanvas');
         const ctx = canvas.getContext('2d');
 
         // --- Constants ---
+        // Responsive canvas sizing
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            objectX = canvas.width / 2;
+            objectY = canvas.height / 2;
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        
         let SCREEN_WIDTH = window.innerWidth; // Use full window size
         let SCREEN_HEIGHT = window.innerHeight;
+        resizeCanvas();
         const MAX_ACCRETION_PARTICLES = 3000;
         const MAX_FALLING_STARS = 240;
         const MAX_BACKGROUND_STARS = 1000; // New constant for background stars
