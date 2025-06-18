@@ -1,7 +1,7 @@
 # ✨ HTML Black Hole Simulation ✨
 
 Welcome! This project renders an interactive simulation of a black hole and its dynamic environment using pure HTML, CSS, and JavaScript on an HTML Canvas element. Explore gravitational effects like accretion disks, spaghettification, and parallax scrolling with interactive zoom.
-
+View at : https://tejaspatelll.github.io/BlackHole-Simulation-HTML/
 <img width="1710" alt="Black Hole Simulation - Overall View" src="https://github.com/user-attachments/assets/7cc66ae5-f9f4-470c-b4e4-d4a61f79232b" />
 _Overall View at Medium Zoom_
 
@@ -63,6 +63,6 @@ This simulation was created for demonstration and educational purposes. You are 
 **If you use this code in your projects, please provide attribution by linking back to the original source or mentioning its origin.**
 
 A simple attribution like this is appreciated:
-> Based on the HTML Black Hole Simulation by [Your Name/Source Link Here]
+> Based on the HTML Black Hole Simulation by [Tejas Patel/[Source Link](https://github.com/tejaspatelll/BlackHole-Simulation-HTML/)]
 
 Enjoy exploring the cosmos!
